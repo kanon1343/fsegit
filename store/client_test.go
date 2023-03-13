@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// コミットオブジェクトが正しく取れるか
 func TestClient_GetObject(t *testing.T) {
 	client, err := NewClient("/Users/haradakanon/Desktop/Atcoder")
 	if err != nil {
@@ -15,7 +16,7 @@ func TestClient_GetObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	obj, err := client.getObject(hash)
+	obj, err := client.GetObject(hash)
 	if err != nil {
 		t.Fatal(err)
 	}
