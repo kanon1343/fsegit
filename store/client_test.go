@@ -11,7 +11,7 @@ func TestClient_GetObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	hashString := "0007cdd154bfd7fa617fe6a0e18685682856f16c"
+	hashString := "366fa17c32ca232790db770d4e37898e48bdd2ce"
 	hash, err := hex.DecodeString(hashString)
 	if err != nil {
 		t.Fatal(err)
@@ -20,5 +20,5 @@ func TestClient_GetObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(obj.Data))
+	t.Log(string(obj.Type))
 }
