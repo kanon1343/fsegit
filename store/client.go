@@ -45,7 +45,6 @@ func (c *Client) GetObject(hash sha.SHA1) (*object.Object, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	return obj, nil
 }
 
