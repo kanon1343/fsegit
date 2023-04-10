@@ -31,7 +31,7 @@ to quickly create a Cobra application.`,
 			log.Fatal(err)
 		}
 
-		client, err := store.NewClient("/Users/haradakanon/Desktop/Atcoder")
+		client, err := store.NewClient("./")
 		if err != nil {
 			log.Fatal()
 		}

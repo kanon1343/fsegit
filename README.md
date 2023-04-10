@@ -9,7 +9,7 @@ Go言語を使用して、自作でGit開発を行っています。
  
 # Installation
  
-Cobra-cli(https://github.com/spf13/cobra)を使用しています。  
+Cobra-cli<https://github.com/spf13/cobra>を使用しています。  
  
 ```zsh
 go install github.com/spf13/cobra-cli@latest
