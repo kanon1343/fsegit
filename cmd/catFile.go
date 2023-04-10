@@ -6,8 +6,8 @@ package cmd
 
 import (
 	"encoding/hex"
-	"log"
 	"fmt"
+	"log"
 
 	"github.com/kanon1343/fsegit/store"
 	"github.com/spf13/cobra"
@@ -24,7 +24,7 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		client, err := store.NewClient("/Users/haradakanon/Desktop/Atcoder")
+		client, err := store.NewClient("./")
 		if err != nil {
 			log.Fatal(err)
 		}
