@@ -8,6 +8,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
+	"os"
+	"io/ioutil"
+	"path/filepath"
 
 	"github.com/kanon1343/fsegit/object"
 	"github.com/kanon1343/fsegit/store"
@@ -25,12 +28,31 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		hashString := args[0]
-		hash, err := hex.DecodeString(hashString)
+		// 最新のコミットオブジェクトを取得.
+		f, err := os.Open("./.git/HEAD")
+		if err != nil{
+			log.Fatal()
+		}
+		defer f.Close()
+		buf, err := ioutil.ReadAll(f)
+		if err != nil {
+			log.Fatal(err)
+		}
+		head := string(buf)
+		latestCommitHash := filepath.Join(".git/", head[5:23])
+		f, err = os.Open(latestCommitHash)
+		if err != nil{
+			log.Fatal(err)
+		}
+		defer f.Close()
+		buf, err = ioutil.ReadAll(f)
+		headFilePath := string(buf)
+		hash, err := hex.DecodeString(headFilePath[:40])
 		if err != nil {
 			log.Fatal(err)
 		}
 
+		// コミット履歴を探索し、出力.
 		client, err := store.NewClient("./")
 		if err != nil {
 			log.Fatal()
