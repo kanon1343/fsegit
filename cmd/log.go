@@ -1,15 +1,11 @@
-/*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
-
-*/
 package cmd
 
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
-	"io/ioutil"
 	"path/filepath"
 
 	"github.com/kanon1343/fsegit/object"
@@ -30,21 +26,32 @@ to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		// 最新のコミットオブジェクトを取得.
 		f, err := os.Open("./.git/HEAD")
-		if err != nil{
+		if err != nil {
 			log.Fatal()
 		}
-		defer f.Close()
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+
+			}
+		}(f)
 		buf, err := ioutil.ReadAll(f)
 		if err != nil {
 			log.Fatal(err)
 		}
 		head := string(buf)
-		latestCommitHash := filepath.Join(".git/", head[5:23])
+		headLength := len(head) - 1
+		latestCommitHash := filepath.Join(".git/", head[5:headLength])
 		f, err = os.Open(latestCommitHash)
-		if err != nil{
+		if err != nil {
 			log.Fatal(err)
 		}
-		defer f.Close()
+		defer func(f *os.File) {
+			err := f.Close()
+			if err != nil {
+
+			}
+		}(f)
 		buf, err = ioutil.ReadAll(f)
 		headFilePath := string(buf)
 		hash, err := hex.DecodeString(headFilePath[:40])
