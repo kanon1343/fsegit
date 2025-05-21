@@ -2,35 +2,54 @@ package cmd
 
 import (
 	"fmt"
+	"log"
+	"path/filepath" // For joining paths to .git/index
 
+	"github.com/kanon1343/fsegit/store" // For ReadIndex
+	"github.com/kanon1343/fsegit/util"   // For FindGitRoot
 	"github.com/spf13/cobra"
 )
 
-// lsFilesCmd represents the lsFiles command
-var lsFilesCmd = &cobra.Command{
-	Use:   "lsFiles",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+var showStage bool // Flag for --stage
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+// lsFilesCmd represents the ls-files command
+var lsFilesCmd = &cobra.Command{
+	Use:   "ls-files",
+	Short: "Show information about files in the index and the working tree",
+	Long: `This command shows information about files in the index.
+With --stage, it shows staged content's mode, object name and stage number.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("lsFiles called")
+		gitDir, err := util.FindGitRoot(".")
+		if err != nil {
+			log.Fatalf("fatal: not a git repository (or any of the parent directories): .git")
+		}
+		dotGitPath := filepath.Join(gitDir, ".git")
+
+		idx, err := store.ReadIndex(dotGitPath)
+		if err != nil {
+			log.Fatalf("Failed to read index: %v", err)
+		}
+
+		if len(idx.Entries) == 0 {
+			// fmt.Println("Index is empty.") // Or just print nothing
+			return
+		}
+
+		for _, entry := range idx.Entries {
+			if showStage {
+				// Format: <mode_octal> <sha1_hash> <stage_number>	<path>
+				// Stage number is in the higher bits of entry.Flags.
+				// store.IndexEntry.Flags field should be public.
+				stage := (entry.Flags >> 12) & 0x3 // Extract stage from bits 12 and 13
+				fmt.Printf("%06o %s %d	%s\n", entry.Mode, entry.Hash.String(), stage, entry.PathName)
+			} else {
+				fmt.Println(entry.PathName)
+			}
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(lsFilesCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// lsFilesCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// lsFilesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	lsFilesCmd.Flags().BoolVar(&showStage, "stage", false, "Show staged contents' mode, object name and stage number")
 }
