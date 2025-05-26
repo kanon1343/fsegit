@@ -2,16 +2,23 @@ package store
 
 import (
 	"encoding/hex"
+	"fmt"
 	"testing"
 )
 
 // コミットオブジェクトが正しく取れるか
 func TestClient_GetObject(t *testing.T) {
-	client, err := NewClient("/Users/haradakanon/Desktop/Atcoder")
+	// Use a relative path for testing
+	testRepoPath := "./testdata/Atcoder"
+	// Create the directory if it doesn't exist (basic setup for the test)
+	// For a real test suite, more robust setup/teardown might be needed
+	// e.g., os.MkdirAll(testRepoPath, 0755)
+	// and potentially os.RemoveAll(testRepoPath) in a cleanup function
+	client, err := NewClient(testRepoPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	hashString := "366fa17c32ca232790db770d4e37898e48bdd2ce"
+	hashString := "ecc8dcee9fc216c5602d369d62bef7d8fdce41d9"
 	hash, err := hex.DecodeString(hashString)
 	if err != nil {
 		t.Fatal(err)
@@ -20,5 +27,5 @@ func TestClient_GetObject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(obj.Type))
+	t.Log(fmt.Sprint(obj.Type))
 }
