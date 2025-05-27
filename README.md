@@ -24,3 +24,11 @@ git clone https://github.com/kanon1343/fsegit
 cd fsegit
 fsegit log
 ```
+
+# テストの実行
+
+プロジェクトのルートディレクトリで以下のコマンドを実行することで、テストを実行できます。
+
+```zsh
+go test -v ./...
+```
