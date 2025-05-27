@@ -27,5 +27,5 @@ func FindGitRoot(path string) (string, error) {
 		return "", ErrNotGitRepository
 	}
 
-	return FindGitRoot(filepath.Join(path, "."))
+	return FindGitRoot(filepath.Join(path, ".."))
 }
