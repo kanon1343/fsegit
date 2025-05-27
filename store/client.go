@@ -2,6 +2,7 @@ package store
 
 import (
 	"compress/zlib"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -9,6 +10,10 @@ import (
 	"github.com/kanon1343/fsegit/sha"
 	"github.com/kanon1343/fsegit/util"
 )
+
+// ErrStopWalk is used as a return value from WalkFunc to indicate that
+// the walk should be stopped.
+var ErrStopWalk = errors.New("stop walk")
 
 type Client struct {
 	objectDir string
@@ -75,7 +80,10 @@ func (c *Client) WalkHistory(hash sha.SHA1, walkFunc WalkFunc) error {
 		}
 
 		if err := walkFunc(current); err != nil {
-			return err
+			if errors.Is(err, ErrStopWalk) {
+				return nil // Stop walking, but not an error for the caller
+			}
+			return err // Actual error
 		}
 
 		ancestors = append(ancestors[1:], current.Parents...)
