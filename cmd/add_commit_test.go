@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 // Helper function to execute cobra commands and capture output/error
@@ -273,7 +275,7 @@ func TestAddCommitWorkflow(t *testing.T) {
 	// file2.txt SHA: expectedSha2File2
 
 	// Manually construct the expected raw tree content for comparison
-	// Entry format: <mode> <name> <sha1_bytes>
+	// Entry format: <mode> <name><sha1_bytes>
 	var expectedTreeContent bytes.Buffer
 
 	sha1File1Bytes, _ := hex.DecodeString(expectedSha1File1)
