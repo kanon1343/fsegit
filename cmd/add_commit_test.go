@@ -2,9 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"compress/zlib"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,46 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-// Helper function to execute cobra commands and capture output/error
-func executeCommand(root *cobra.Command, args ...string) (string, error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-	err := root.Execute()
-	return strings.TrimSpace(buf.String()), err
-}
-
-// Helper function to calculate blob SHA (for verification)
-func calculateBlobSHA(content []byte) string {
-	header := fmt.Sprintf("blob %d\x00", len(content))
-	data := append([]byte(header), content...)
-	hash := sha1.Sum(data)
-	return fmt.Sprintf("%x", hash)
-}
-
-// Helper function to read and decompress an object file
-func readObject(objectDir, sha1Str string) ([]byte, error) {
-	path := filepath.Join(objectDir, sha1Str[:2], sha1Str[2:])
-	compressedData, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read object file %s: %w", path, err)
-	}
-
-	reader, err := zlib.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create zlib reader for %s: %w", sha1Str, err)
-	}
-	defer reader.Close()
-
-	data, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decompress object %s: %w", sha1Str, err)
-	}
-	return data, nil
-}
-
 
 func TestAddCommitWorkflow(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "fsegit-test-*")
@@ -72,16 +29,9 @@ func TestAddCommitWorkflow(t *testing.T) {
 	defer os.Chdir(originalWd)
 
 	// 1. Initialize fsegit repository structure
-	fsegitDir := ".fsegit"
-	objectsDir := filepath.Join(fsegitDir, "objects")
-	refsHeadsDir := filepath.Join(fsegitDir, "refs", "heads")
-
-	if err := os.MkdirAll(objectsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", objectsDir, err)
-	}
-	if err := os.MkdirAll(refsHeadsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", refsHeadsDir, err)
-	}
+	// Use CreateTestRepo helper
+	_, objectsDir, refsHeadsDir := CreateTestRepo(t, tempDir)
+	fsegitDir := filepath.Join(tempDir, ".fsegit") // CreateTestRepo uses tempDir as root for .fsegit
 
 	// 2. Create sample files
 	file1Content := []byte("hello")
@@ -95,24 +45,13 @@ func TestAddCommitWorkflow(t *testing.T) {
 
 	// Reset global states for commands if necessary (e.g. flags)
 	// This is important because cobra commands can have global state.
-	resetCommandStates := func() {
-		// For addCmd, there's no global flag state to reset beyond what cobra handles per-run.
-		// For commitCmd, commitMessage is a global var.
-		commitMessage = ""
-		// Re-initialize root command and its children for a clean state
-		rootCmd = &cobra.Command{Use: "fsegit"}
-		rootCmd.AddCommand(addCmd)
-		rootCmd.AddCommand(commitCmd)
-		// Re-setup commitCmd flags, as rootCmd is new
-		commitCmd.Flags().StringVarP(&commitMessage, "message", "m", "", "Commit message (required)")
-		if err := commitCmd.MarkFlagRequired("message"); err != nil {
-			t.Fatalf("Failed to mark commit message flag required: %v", err)
-		}
-	}
+	// Create a new root command for this test execution
+	testRootCmd := &cobra.Command{Use: "fsegit-test-ac"}
+	ResetCommandStatesTest(t, testRootCmd, addCmd, commitCmd)
+
 
 	// 3. Programmatically execute the addCmd
-	resetCommandStates()
-	_, err = executeCommand(rootCmd, "add", "file1.txt", "file2.txt")
+	_, err = ExecuteCommandTest(testRootCmd, "add", "file1.txt", "file2.txt")
 	if err != nil {
 		t.Fatalf("addCmd execution failed: %v", err)
 	}
@@ -129,8 +68,8 @@ func TestAddCommitWorkflow(t *testing.T) {
 		t.Fatalf("Expected 2 entries in index, got %d: %v", len(indexEntries), indexEntries)
 	}
 
-	expectedSha1File1 := calculateBlobSHA(file1Content)
-	expectedSha2File2 := calculateBlobSHA(file2Content)
+	expectedSha1File1 := CalculateBlobSHATest(file1Content)
+	expectedSha2File2 := CalculateBlobSHATest(file2Content)
 	foundFile1 := false
 	foundFile2 := false
 
@@ -162,7 +101,7 @@ func TestAddCommitWorkflow(t *testing.T) {
 	}
 
 	// 5. Verify blob objects
-	blob1Data, err := readObject(objectsDir, expectedSha1File1)
+	blob1Data, err := ReadObjectTest(objectsDir, expectedSha1File1)
 	if err != nil {
 		t.Fatalf("Failed to read blob object for file1.txt (SHA: %s): %v", expectedSha1File1, err)
 	}
@@ -171,7 +110,7 @@ func TestAddCommitWorkflow(t *testing.T) {
 		t.Errorf("file1.txt blob content mismatch: got '%s', want '%s'", string(blob1Data), expectedBlob1ObjectContent)
 	}
 
-	blob2Data, err := readObject(objectsDir, expectedSha2File2)
+	blob2Data, err := ReadObjectTest(objectsDir, expectedSha2File2)
 	if err != nil {
 		t.Fatalf("Failed to read blob object for file2.txt (SHA: %s): %v", expectedSha2File2, err)
 	}
@@ -183,9 +122,10 @@ func TestAddCommitWorkflow(t *testing.T) {
 	t.Log("Add command verification complete.")
 
 	// 6. Programmatically execute the commitCmd
-	resetCommandStates() // Important to reset commitMessage and re-init cobra command flags
+	// Reset states again for commit, ensuring commitMessage var is clean and flags are set on testRootCmd
+	ResetCommandStatesTest(t, testRootCmd, addCmd, commitCmd) // Re-pass addCmd as well or just commitCmd if preferred
 	commitTestMessage := "Test commit"
-	_, err = executeCommand(rootCmd, "commit", "-m", commitTestMessage)
+	_, err = ExecuteCommandTest(testRootCmd, "commit", "-m", commitTestMessage)
 	if err != nil {
 		t.Fatalf("commitCmd execution failed: %v", err)
 	}
@@ -223,7 +163,7 @@ func TestAddCommitWorkflow(t *testing.T) {
 	}
 
 	// 10. Verify commit object
-	commitObjectData, err := readObject(objectsDir, commitSha1Str)
+	commitObjectData, err := ReadObjectTest(objectsDir, commitSha1Str)
 	if err != nil {
 		t.Fatalf("Failed to read commit object (SHA: %s): %v", commitSha1Str, err)
 	}
@@ -258,7 +198,7 @@ func TestAddCommitWorkflow(t *testing.T) {
 	}
 
 	// 11. Verify tree object
-	treeObjectData, err := readObject(objectsDir, treeSha1FromCommit)
+	treeObjectData, err := ReadObjectTest(objectsDir, treeSha1FromCommit)
 	if err != nil {
 		t.Fatalf("Failed to read tree object (SHA: %s): %v", treeSha1FromCommit, err)
 	}
@@ -278,11 +218,11 @@ func TestAddCommitWorkflow(t *testing.T) {
 	// Entry format: <mode> <name><sha1_bytes>
 	var expectedTreeContent bytes.Buffer
 
-	sha1File1Bytes, _ := hex.DecodeString(expectedSha1File1)
+	sha1File1Bytes := DecodeSHA1Hex(t, expectedSha1File1)
 	expectedTreeContent.WriteString(fmt.Sprintf("100644 file1.txt\x00"))
 	expectedTreeContent.Write(sha1File1Bytes)
 
-	sha1File2Bytes, _ := hex.DecodeString(expectedSha2File2)
+	sha1File2Bytes := DecodeSHA1Hex(t, expectedSha2File2)
 	expectedTreeContent.WriteString(fmt.Sprintf("100644 file2.txt\x00"))
 	expectedTreeContent.Write(sha1File2Bytes)
 

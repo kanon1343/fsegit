@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"bytes"
-	"compress/zlib"
-	"crypto/sha1"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -13,88 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-// Helper function to execute cobra commands and capture output/error
-// Copied from add_commit_test.go
-func executeCommandTest(root *cobra.Command, args ...string) (string, error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-
-	// For 'add' and 'commit' commands, they are added to the rootCmd in their init.
-	// If rootCmd is created anew here, it needs its subcommands re-added.
-	// However, the actual addCmd and commitCmd are global vars in the package.
-	// We need to ensure flags are reset if they are persistent or package-level.
-	// For 'add', there are no flags. For 'commit', 'commitMessage' is a package var.
-
-	err := root.Execute()
-	return strings.TrimSpace(buf.String()), err
-}
-
-// Helper function to calculate blob SHA (for verification)
-// Copied from add_commit_test.go
-func calculateBlobSHATest(content []byte) string {
-	header := fmt.Sprintf("blob %d\x00", len(content))
-	data := append([]byte(header), content...)
-	hash := sha1.Sum(data)
-	return fmt.Sprintf("%x", hash)
-}
-
-// Helper function to read and decompress an object file
-// Renamed to avoid conflict if these were in the same package and not _test package
-// Copied from add_commit_test.go
-func readObjectTest(objectDir, sha1Str string) ([]byte, error) {
-	path := filepath.Join(objectDir, sha1Str[:2], sha1Str[2:])
-	compressedData, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read object file %s: %w", path, err)
-	}
-
-	reader, err := zlib.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create zlib reader for %s: %w", sha1Str, err)
-	}
-	defer reader.Close()
-
-	data, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decompress object %s: %w", sha1Str, err)
-	}
-	return data, nil
-}
-
-// Resets global state for commands, particularly for flags or package-level vars.
-// Copied and adapted from add_commit_test.go
-func resetCommandStatesTest(t *testing.T) {
-	// For addCmd, there's no global flag state to reset that cobra doesn't handle per-run.
-	// For commitCmd (if it were used here), commitMessage is a global var.
-	// commitMessage = "" // Example if commitCmd was involved
-
-	// Re-initialize root command and its children for a clean state for THIS test run.
-	// This helps if subcommands are added to a global rootCmd instance.
-	// However, our actual commands (addCmd, commitCmd) are package-level variables.
-	// The executeCommandTest will use the passed rootCmd.
-	// The main thing is to ensure any package-level flags used by commands are reset.
-	// addCmd doesn't have such flags.
-}
-
-// Helper to create a basic repo structure for tests
-func createTestRepo(t *testing.T, tempDir string) (fsegitDir, objectsDir string) {
-	t.Helper()
-	fsegitDir = filepath.Join(tempDir, ".fsegit")
-	objectsDir = filepath.Join(fsegitDir, "objects")
-	refsHeadsDir := filepath.Join(fsegitDir, "refs", "heads")
-
-	if err := os.MkdirAll(objectsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", objectsDir, err)
-	}
-	if err := os.MkdirAll(refsHeadsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", refsHeadsDir, err)
-	}
-	return fsegitDir, objectsDir
-}
-
 
 func TestAddCommand(t *testing.T) {
 	tempDir, err := ioutil.TempDir("", "fsegit-add-test-*")
@@ -115,7 +30,7 @@ func TestAddCommand(t *testing.T) {
 	// Use t.Cleanup for changing back directory, executed in LIFO order
 	t.Cleanup(func() { os.Chdir(originalWd) })
 
-	fsegitDir, objectsDir := createTestRepo(t, tempDir)
+	fsegitDir, objectsDir, _ := CreateTestRepo(t, tempDir) // Discard refsHeadsDir
 
 	// Create sample files
 	fileAContent := []byte("This is file A.")
@@ -134,11 +49,13 @@ func TestAddCommand(t *testing.T) {
 	// We add it to our test root command.
 	testRootCmd.AddCommand(addCmd)
 
-	// Reset any relevant states before execution (though addCmd has none currently)
-	resetCommandStatesTest(t) // Currently a no-op for addCmd
+	// Reset any relevant states before execution
+	// Pass testRootCmd and the specific command being tested (addCmd)
+	ResetCommandStatesTest(t, testRootCmd, addCmd)
+
 
 	// Execute the addCmd
-	_, err = executeCommandTest(testRootCmd, "add", "fileA.txt", "fileB.txt")
+	_, err = ExecuteCommandTest(testRootCmd, "add", "fileA.txt", "fileB.txt")
 	if err != nil {
 		t.Fatalf("addCmd execution failed: %v", err)
 	}
@@ -155,8 +72,8 @@ func TestAddCommand(t *testing.T) {
 		t.Fatalf("Expected 2 entries in index, got %d: %v", len(indexEntries), indexEntries)
 	}
 
-	expectedShaFileA := calculateBlobSHATest(fileAContent)
-	expectedShaFileB := calculateBlobSHATest(fileBContent)
+	expectedShaFileA := CalculateBlobSHATest(fileAContent)
+	expectedShaFileB := CalculateBlobSHATest(fileBContent)
 	foundFileA := false
 	foundFileB := false
 
@@ -188,7 +105,7 @@ func TestAddCommand(t *testing.T) {
 	}
 
 	// Verify blob objects
-	blobAData, err := readObjectTest(objectsDir, expectedShaFileA)
+	blobAData, err := ReadObjectTest(objectsDir, expectedShaFileA)
 	if err != nil {
 		t.Fatalf("Failed to read blob object for fileA.txt (SHA: %s): %v", expectedShaFileA, err)
 	}
@@ -197,7 +114,7 @@ func TestAddCommand(t *testing.T) {
 		t.Errorf("fileA.txt blob content mismatch: got '%s', want '%s'", string(blobAData), expectedBlobAObjectContent)
 	}
 
-	blobBData, err := readObjectTest(objectsDir, expectedShaFileB)
+	blobBData, err := ReadObjectTest(objectsDir, expectedShaFileB)
 	if err != nil {
 		t.Fatalf("Failed to read blob object for fileB.txt (SHA: %s): %v", expectedShaFileB, err)
 	}

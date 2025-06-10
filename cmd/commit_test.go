@@ -2,9 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"compress/zlib"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -14,94 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-// --- Copied Helper Functions (from add_test.go / add_commit_test.go) ---
-
-// executeCommandTest executes cobra commands for testing.
-func executeCommandTest(root *cobra.Command, args ...string) (string, error) {
-	buf := new(bytes.Buffer)
-	root.SetOut(buf)
-	root.SetErr(buf)
-	root.SetArgs(args)
-	err := root.Execute()
-	return strings.TrimSpace(buf.String()), err
-}
-
-// calculateBlobSHATest calculates SHA1 for blob content.
-func calculateBlobSHATest(content []byte) string {
-	header := fmt.Sprintf("blob %d\x00", len(content))
-	data := append([]byte(header), content...)
-	hash := sha1.Sum(data)
-	return fmt.Sprintf("%x", hash)
-}
-
-// storeObjectTest compresses and stores data, mimicking storeObject from commit.go
-func storeObjectTest(t *testing.T, objectsDir string, sha1Str string, data []byte) {
-	t.Helper()
-	objectSubDir := filepath.Join(objectsDir, sha1Str[:2])
-	objectPath := filepath.Join(objectSubDir, sha1Str[2:])
-
-	if err := os.MkdirAll(objectSubDir, 0755); err != nil {
-		t.Fatalf("Failed to create object subdir %s: %v", objectSubDir, err)
-	}
-
-	objectFile, err := os.Create(objectPath)
-	if err != nil {
-		t.Fatalf("Failed to create object file %s: %v", objectPath, err)
-	}
-	defer objectFile.Close()
-
-	zlibWriter := zlib.NewWriter(objectFile)
-	if _, err := zlibWriter.Write(data); err != nil {
-		t.Fatalf("Failed to write compressed data to object file %s: %v", objectPath, err)
-	}
-	if err := zlibWriter.Close(); err != nil {
-		t.Fatalf("Failed to close zlib writer for object file %s: %v", objectPath, err)
-	}
-}
-
-
-// readObjectTest reads and decompresses an object file.
-func readObjectTest(objectDir, sha1Str string) ([]byte, error) {
-	path := filepath.Join(objectDir, sha1Str[:2], sha1Str[2:])
-	compressedData, err := ioutil.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read object file %s: %w", path, err)
-	}
-
-	reader, err := zlib.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create zlib reader for %s: %w", sha1Str, err)
-	}
-	defer reader.Close()
-
-	data, err := ioutil.ReadAll(reader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decompress object %s: %w", sha1Str, err)
-	}
-	return data, nil
-}
-
-// resetCommitCmdState resets state for commitCmd, specifically the message flag.
-func resetCommitCmdState() {
-	commitMessage = "" // This is the package-level variable for the -m flag in commit.go
-}
-
-// createTestRepo sets up a basic .fsegit structure.
-func createTestRepo(t *testing.T, tempDir string) (fsegitDir, objectsDir, refsHeadsDir string) {
-	t.Helper()
-	fsegitDir = filepath.Join(tempDir, ".fsegit")
-	objectsDir = filepath.Join(fsegitDir, "objects")
-	refsHeadsDir = filepath.Join(fsegitDir, "refs", "heads")
-
-	if err := os.MkdirAll(objectsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", objectsDir, err)
-	}
-	if err := os.MkdirAll(refsHeadsDir, 0755); err != nil {
-		t.Fatalf("Failed to create %s: %v", refsHeadsDir, err)
-	}
-	return fsegitDir, objectsDir, refsHeadsDir
-}
 
 // --- TestCommitCommand ---
 
@@ -121,7 +30,7 @@ func TestCommitCommand(t *testing.T) {
 	}
 	t.Cleanup(func() { os.Chdir(originalWd) })
 
-	fsegitDir, objectsDir, refsHeadsDir := createTestRepo(t, tempDir)
+	fsegitDir, objectsDir, refsHeadsDir := CreateTestRepo(t, tempDir)
 
 	// 1. Prepare for commit (simulate 'fsegit add')
 	fileCContent := []byte("This is file C for commit test.")
@@ -131,10 +40,10 @@ func TestCommitCommand(t *testing.T) {
 	}
 
 	// Manually create blob object for fileC.txt
-	blobCSha1 := calculateBlobSHATest(fileCContent)
+	blobCSha1 := CalculateBlobSHATest(fileCContent)
 	blobCHeader := fmt.Sprintf("blob %d\x00", len(fileCContent))
 	blobCData := append([]byte(blobCHeader), fileCContent...)
-	storeObjectTest(t, objectsDir, blobCSha1, blobCData)
+	StoreObjectTest(t, objectsDir, blobCSha1, blobCData)
 
 	// Manually create .fsegit/index
 	indexFilePath := filepath.Join(fsegitDir, "index")
@@ -149,19 +58,16 @@ func TestCommitCommand(t *testing.T) {
 	// Setup cobra command for testing
 	// Important: commitCmd uses a package-level variable `commitMessage` for the -m flag.
 	// We must ensure this is reset.
-	resetCommitCmdState()
-
 	testRootCmd := &cobra.Command{Use: "fsegit-test"}
+	ResetCommandStatesTest(t, testRootCmd, commitCmd)
+
+
 	// commitCmd is a global var in the 'cmd' package. We add it to our test root.
 	// Flags for commitCmd (like -m) are defined in its init() function.
 	// When commitCmd is added to testRootCmd, its flags should be available.
-	testRootCmd.AddCommand(commitCmd)
-	// Ensure the -m flag is re-registered if cobra needs it per command instance
-    commitCmd.Flags().StringVarP(&commitMessage, "message", "m", "", "Commit message (required)")
-    // No need to MarkFlagRequired again if it's done in init, but safe for isolated test setup.
-    // If not done, flag parsing might fail.
+	// Ensure the -m flag is re-registered if cobra needs it per command instance - This is handled by ResetCommandStatesTest
 
-	_, err = executeCommandTest(testRootCmd, "commit", "-m", testCommitMsg)
+	_, err = ExecuteCommandTest(testRootCmd, "commit", "-m", testCommitMsg)
 	if err != nil {
 		t.Fatalf("commitCmd execution failed: %v", err)
 	}
@@ -199,7 +105,7 @@ func TestCommitCommand(t *testing.T) {
 	}
 
 	// 6. Verify commit object
-	commitObjectData, err := readObjectTest(objectsDir, commitSha1Str)
+	commitObjectData, err := ReadObjectTest(objectsDir, commitSha1Str)
 	if err != nil {
 		t.Fatalf("Failed to read commit object (SHA: %s): %v", commitSha1Str, err)
 	}
@@ -230,7 +136,7 @@ func TestCommitCommand(t *testing.T) {
 	}
 
 	// 7. Verify tree object
-	treeObjectData, err := readObjectTest(objectsDir, treeSha1FromCommit)
+	treeObjectData, err := ReadObjectTest(objectsDir, treeSha1FromCommit)
 	if err != nil {
 		t.Fatalf("Failed to read tree object (SHA: %s): %v", treeSha1FromCommit, err)
 	}
@@ -242,7 +148,7 @@ func TestCommitCommand(t *testing.T) {
 
 	// Expected tree entry for fileC.txt
 	var expectedTreeContent bytes.Buffer
-	sha1FileCBytes, _ := hex.DecodeString(blobCSha1) // blobCSha1 was calculated for the blob
+	sha1FileCBytes := DecodeSHA1Hex(t, blobCSha1) // blobCSha1 was calculated for the blob
 	expectedTreeContent.WriteString(fmt.Sprintf("100644 %s\x00", filepath.Base(filePathC)))
 	expectedTreeContent.Write(sha1FileCBytes)
 
